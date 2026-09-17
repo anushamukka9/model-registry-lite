@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-registry-lite"
+version = "0.1.0"
+description = "A minimal model registry: versioned artifact metadata, stage transitions with approvals, metric search, and a SQLite store."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Anusha Mukka" }]
+maintainers = [{ name = "Anusha Mukka" }]
+urls = { Homepage = "https://anushamukka.com", Repository = "https://github.com/anushamukka9/model-registry-lite" }
+keywords = ["mlops", "model-registry", "machine-learning", "versioning", "sqlite"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+model-registry = "model_registry_lite.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

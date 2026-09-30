@@ -10,16 +10,18 @@ Built by [Anusha Mukka](https://anushamukka.com).
 
 ## Features
 
-- **Versioned registration** — name, version, framework, description, artifact
+- **Versioned registration** - name, version, framework, description, artifact
   path, training-dataset hash, metrics, hyperparameters, tags.
-- **Lifecycle stages** — `staging` → `production` → `archived`, with an
+- **Lifecycle stages** - `staging` -> `production` -> `archived`, with an
   approver name + note recorded on every transition and a full audit trail.
-- **Metric search** — filter by thresholds like `f1>=0.9`, combined with
+- **Artifact checksums** - record the SHA-256 of the artifact file at
+  registration time and verify it later to catch corruption or swaps.
+- **Metric search** - filter by thresholds like `f1>=0.9`, combined with
   metadata filters (framework, stage, tags, name substring).
-- **SQLite store** — zero dependencies beyond the standard library; documents
+- **SQLite store** - zero dependencies beyond the standard library; documents
   stored as JSON so metadata evolves without migrations.
-- **Export / import** — the whole registry as one portable JSON document.
-- **CLI + Python API** — script it or click it.
+- **Export / import** - the whole registry as one portable JSON document.
+- **CLI + Python API** - script it or click it.
 
 ## Install
 
@@ -46,6 +48,16 @@ model-registry promote --name churn-predictor --version 1.1.0 \
 
 # Find production models with f1 >= 0.9
 model-registry search --stage production --metric "f1>=0.9"
+
+# Verify the artifact file still matches its recorded checksum
+model-registry verify --name churn-predictor --version 1.1.0
+```
+
+Hash the artifact at registration time:
+
+```bash
+model-registry register --name churn-predictor --version 1.2.0 \
+    --artifact-path ./churn-1.2.0.pkl --hash-artifact
 ```
 
 Python API:
@@ -67,22 +79,25 @@ See [docs/usage.md](docs/usage.md) for the full guide and
 
 ## API reference
 
-- `ModelRegistry(db_path)` — main entry point; also a context manager.
+- `ModelRegistry(db_path)` - main entry point; also a context manager.
   - `register(name, version, framework=..., description=..., artifact_path=...,
-    dataset_hash=..., metrics=..., hyperparameters=..., tags=..., overwrite=False)`
+    artifact_sha256=..., compute_checksum=False, dataset_hash=...,
+    metrics=..., hyperparameters=..., tags=..., overwrite=False)`
   - `get(name, version)` / `list_models(stage=None)` / `list_versions(name)` /
     `latest(name, stage=None)`
   - `promote(name, version, approved_by, note="")` /
     `archive(name, version, approved_by, note="")` /
     `transition(name, version, to_stage, approved_by, note="")`
+  - `verify_artifact(name, version, path=None)` - `(ok, detail)` checksum check
   - `search(name_contains=None, framework=None, stage=None, tags=None,
-    metric_filters=None)` — metric filters like `"f1>=0.9"`, `"loss<0.5"`
+    metric_filters=None)` - metric filters like `"f1>=0.9"`, `"loss<0.5"`
   - `update_metadata(name, version, **fields)` / `deregister(name, version)`
   - `export_json()` / `export_to_file(path)` / `import_json(payload, overwrite=False)` /
-    `import_from_file(path, overwrite=False)` → `(imported, skipped)`
-- `ModelVersion` — dataclass holding a version's metadata and transition history.
-- `Stage` — `STAGING` / `PRODUCTION` / `ARCHIVED`.
-- `RegistryError` — raised on invalid operations.
+    `import_from_file(path, overwrite=False)` -> `(imported, skipped)`
+- `ModelVersion` - dataclass holding a version's metadata and transition history.
+- `Stage` - `STAGING` / `PRODUCTION` / `ARCHIVED`.
+- `RegistryError` - raised on invalid operations.
+- `sha256_of_file(path)` - hex SHA-256 of a file, streamed in 1 MiB chunks.
 
 ## Architecture
 
@@ -91,6 +106,7 @@ src/model_registry_lite/
 ├── __init__.py      # public API surface
 ├── __main__.py      # `python -m model_registry_lite`
 ├── models.py        # Stage, ModelVersion, StageTransition (dataclasses, JSON serde)
+├── checksums.py     # sha256_of_file: chunked file hashing for artifacts
 ├── store.py         # SqliteStore: two tables (model docs as JSON, transition audit log)
 ├── registry.py      # ModelRegistry: registration, lifecycle, search, export/import
 └── cli.py           # argparse CLI (`model-registry`)
@@ -114,4 +130,4 @@ CI runs the test suite on Python 3.9–3.12 plus a smoke run of the example.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright © 2026 Anusha Mukka.
+MIT - see [LICENSE](LICENSE). Copyright © 2026 Anusha Mukka.

@@ -11,6 +11,7 @@ Usage examples:
 
     model-registry list --stage production
     model-registry search --metric "f1>=0.9" --framework sklearn
+    model-registry verify --name churn-model --version 1.0.0
     model-registry export --out registry-backup.json
 """
 
@@ -52,6 +53,10 @@ def build_parser() -> argparse.ArgumentParser:
     reg.add_argument("--framework", default="")
     reg.add_argument("--description", default="")
     reg.add_argument("--artifact-path", default="")
+    reg.add_argument("--artifact-sha256", default="",
+                     help="Recorded SHA-256 of the artifact file.")
+    reg.add_argument("--hash-artifact", action="store_true",
+                     help="Hash --artifact-path at registration time and record it.")
     reg.add_argument("--dataset-hash", default="")
     reg.add_argument("--metrics", default="{}", help='JSON object, e.g. \'{"f1": 0.91}\'')
     reg.add_argument("--hyperparameters", default="{}", help="JSON object of hyperparameters.")
@@ -90,6 +95,12 @@ def build_parser() -> argparse.ArgumentParser:
     hist = sub.add_parser("history", help="Show the stage-transition audit trail.")
     hist.add_argument("--name", required=True)
     hist.add_argument("--version", required=True, dest="model_version")
+
+    ver = sub.add_parser("verify", help="Verify an artifact file against its recorded checksum.")
+    ver.add_argument("--name", required=True)
+    ver.add_argument("--version", required=True, dest="model_version")
+    ver.add_argument("--artifact-path", default=None,
+                     help="Check this file instead of the registered artifact path.")
 
     search = sub.add_parser("search", help="Search models by metadata and metric thresholds.")
     search.add_argument("--name-contains", default=None)
@@ -145,6 +156,8 @@ def _dispatch(registry: ModelRegistry, args: argparse.Namespace) -> int:
             framework=args.framework,
             description=args.description,
             artifact_path=args.artifact_path,
+            artifact_sha256=args.artifact_sha256,
+            compute_checksum=args.hash_artifact,
             dataset_hash=args.dataset_hash,
             metrics=_kv_json(args.metrics, "metrics"),
             hyperparameters=_kv_json(args.hyperparameters, "hyperparameters"),
@@ -201,9 +214,17 @@ def _dispatch(registry: ModelRegistry, args: argparse.Namespace) -> int:
         if not entries:
             print("No recorded transitions.")
         for entry in entries:
-            note = f" — {entry.note}" if entry.note else ""
+            note = f" - {entry.note}" if entry.note else ""
             print(f"{entry.at}: {entry.from_stage} -> {entry.to_stage} by {entry.approved_by}{note}")
         return 0
+
+    if args.command == "verify":
+        ok, detail = registry.verify_artifact(
+            args.name, args.model_version, path=args.artifact_path
+        )
+        status = "OK" if ok else ("UNKNOWN" if ok is None else "FAILED")
+        print(f"{status}: {detail}")
+        return 0 if ok else 1
 
     if args.command == "search":
         results = registry.search(

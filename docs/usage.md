@@ -17,13 +17,13 @@ imported as `model_registry_lite`.
 
 ## Concepts
 
-- **Model version** — one trained artifact plus metadata: name, version,
-  framework, description, artifact path, training-dataset hash, metrics,
-  hyperparameters, and tags.
-- **Stage** — a version's lifecycle position: `staging` -> `production` ->
+- **Model version** - one trained artifact plus metadata: name, version,
+  framework, description, artifact path, artifact checksum, training-dataset
+  hash, metrics, hyperparameters, and tags.
+- **Stage** - a version's lifecycle position: `staging` -> `production` ->
   `archived`. Archived is terminal. Every move needs an approver name and
   can carry a note; moves are kept in an audit trail (`history`).
-- **Store** — a single SQLite file (`model_registry.db` by default). Model
+- **Store** - a single SQLite file (`model_registry.db` by default). Model
   documents are stored as JSON so metadata fields can evolve without
   schema migrations.
 
@@ -67,6 +67,29 @@ registry.import_from_file("backup.json")          # skips existing unless overwr
 
 registry.close()
 ```
+
+### Artifact checksums
+
+Record the SHA-256 of the artifact file when you register, then verify it
+before any promotion or deployment. Hashing streams the file in 1 MiB
+chunks, so large model files are fine.
+
+```python
+registry.register(
+    name="churn-predictor",
+    version="1.2.0",
+    artifact_path="./artifacts/churn-1.2.0.pkl",
+    compute_checksum=True,          # hashes the file, stores it as artifact_sha256
+)
+
+ok, detail = registry.verify_artifact("churn-predictor", "1.2.0")
+print(detail)                       # "checksum matches (sha256:...)" on success
+```
+
+A version registered without a checksum returns `ok=None` ("unknown") -
+verify never silently passes. CLI equivalents: `--hash-artifact` on
+`register` (or `--artifact-sha256 <digest>`), and `model-registry verify`.
+
 
 `ModelRegistry` also works as a context manager.
 
@@ -117,7 +140,7 @@ model-registry import --in backup.json          # add --overwrite to replace
 ## Workflow suggestions
 
 1. **Experiment tracking**: register every training run in `staging` with
-   its dataset hash, metrics, and hyperparameters — the hash makes results
+   its dataset hash, metrics, and hyperparameters - the hash makes results
    reproducible.
 2. **Promotion gate**: only `promote` after an offline evaluation; the
    required approver name + note gives you a paper trail for audits.

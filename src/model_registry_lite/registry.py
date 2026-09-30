@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from .checksums import sha256_of_file
 from .models import ModelVersion, Stage
 from .store import SqliteStore
 
@@ -61,16 +62,31 @@ class ModelRegistry:
         framework: str = "",
         description: str = "",
         artifact_path: str = "",
+        artifact_sha256: str = "",
+        compute_checksum: bool = False,
         dataset_hash: str = "",
         metrics: Optional[Dict[str, float]] = None,
         hyperparameters: Optional[Dict[str, Any]] = None,
         tags: Optional[List[str]] = None,
         overwrite: bool = False,
     ) -> ModelVersion:
+        """Register a model version, optionally hashing its artifact file.
+
+        Pass ``compute_checksum=True`` (with ``artifact_path`` pointing at the
+        file) to record the SHA-256 of the artifact at registration time, or
+        pass ``artifact_sha256`` directly when the digest is already known.
+        """
         if not name.strip():
             raise RegistryError("Model name must not be empty.")
         if not version.strip():
             raise RegistryError("Model version must not be empty.")
+        if compute_checksum:
+            if not artifact_path:
+                raise RegistryError("compute_checksum=True requires artifact_path.")
+            try:
+                artifact_sha256 = sha256_of_file(artifact_path)
+            except FileNotFoundError as exc:
+                raise RegistryError(f"Cannot hash artifact: {exc}") from exc
         existing = self.store.get(name, version)
         if existing is not None and not overwrite:
             raise RegistryError(
@@ -83,6 +99,7 @@ class ModelRegistry:
             framework=framework,
             description=description,
             artifact_path=artifact_path,
+            artifact_sha256=artifact_sha256,
             dataset_hash=dataset_hash,
             metrics=dict(metrics or {}),
             hyperparameters=dict(hyperparameters or {}),
@@ -98,6 +115,7 @@ class ModelRegistry:
             "framework",
             "description",
             "artifact_path",
+            "artifact_sha256",
             "dataset_hash",
             "metrics",
             "hyperparameters",
@@ -114,6 +132,15 @@ class ModelRegistry:
     def deregister(self, name: str, version: str) -> None:
         if not self.store.delete(name, version):
             raise RegistryError(f"Model {name!r} version {version!r} not found.")
+
+    def verify_artifact(
+        self, name: str, version: str, path: Optional[PathLike] = None
+    ) -> Tuple[Optional[bool], str]:
+        """Check the artifact file against the checksum recorded at registration.
+
+        Returns ``(ok, detail)``; see :meth:`ModelVersion.verify_artifact`.
+        """
+        return self.get(name, version).verify_artifact(path)
 
     # -- reads ----------------------------------------------------------
     def get(self, name: str, version: str) -> ModelVersion:
